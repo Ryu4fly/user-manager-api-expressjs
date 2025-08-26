@@ -1,7 +1,7 @@
-import express, { type Request, type Response } from 'express';
-import nano from 'nano';
-import z from 'zod';
 import bcrypt from 'bcrypt';
+import express, { type Request, type Response } from 'express';
+import z from 'zod';
+import { connectDB, usersDB } from './services/couchDB.js';
 
 const app = express();
 const port = 3000;
@@ -9,29 +9,13 @@ const port = 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-let usersDB: nano.DocumentScope<any>;
-const connectDB = async (maxRetries = 5, delay = 3000) => {
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      const couch = nano('http://db:5984');
-      usersDB = couch.db.use('users');
-      await usersDB.auth('user', 'pass');
-      return;
-    } catch {
-      console.log(`CouchDB not ready, retrying... ${i + 1}/${maxRetries}`);
-      await new Promise((res) => setTimeout(res, delay));
-    }
-  }
-
-  throw new Error('CouchDB not reachable');
-};
-
 app.get('/ping', (req: Request, res: Response) => {
   res.send('Health Check');
 });
 
 app.get('/users', async (req: Request, res: Response) => {
   try {
+    // TODO: also includes index docs -- make sure to filter out
     const doclist = await usersDB.list({ include_docs: true });
 
     const users = doclist.rows.map((row) => ({
