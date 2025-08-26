@@ -1,13 +1,12 @@
 import bcrypt from 'bcrypt';
 import express, { type Request, type Response } from 'express';
-import nano from 'nano';
 import z from 'zod';
 import { authorizer } from './middlewares/authorizer.js';
 import { LoginParams, RegisterParams, User } from './types.js';
 import { isAdmin } from './utils/is-admin.js';
 import { signAccessToken, signRefreshToken } from './utils/jwt/jwt.js';
-
-const USERS_TABLE = 'users';
+import { connectDB, usersDB } from './services/couchDB.js';
+import { logger } from './utils/logger.js';
 
 const app = express();
 const port = 3000;
@@ -15,34 +14,19 @@ const port = 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-let usersDB: nano.DocumentScope<any>;
-const connectDB = async (maxRetries = 5, delay = 3000) => {
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      const couch = nano('http://db:5984');
-      usersDB = couch.db.use(USERS_TABLE);
-      await usersDB.auth('user', 'pass');
-      return;
-    } catch {
-      console.log(`CouchDB not ready, retrying... ${i + 1}/${maxRetries}`);
-      await new Promise((res) => setTimeout(res, delay));
-    }
-  }
-
-  throw new Error('CouchDB not reachable');
-};
-
 app.get('/ping', (req: Request, res: Response) => {
   res.send('Health Check');
 });
 
 app.get('/users', authorizer, async (req: Request, res: Response) => {
   if (!isAdmin(req)) {
+    logger.warn('Unauthorized attempt made', req);
     res.status(403).json({ ok: false, message: 'FORBIDDEN' });
     return;
   }
 
   try {
+    // TODO: also includes index docs -- make sure to filter out
     const doclist = await usersDB.list({ include_docs: true });
 
     const users = doclist.rows.map((row) => ({
@@ -51,9 +35,12 @@ app.get('/users', authorizer, async (req: Request, res: Response) => {
       role: row.doc?.role,
     }));
 
+    logger.info('Users successfully fetched', req);
     res.status(200).json({ ok: true, users });
   } catch (err) {
-    console.error(err);
+    logger.error('Unable to fetch users from database', req, {
+      cause: err,
+    });
     res.status(500).json({ ok: false, message: 'Unhandled Exception' });
   }
 });
@@ -62,22 +49,29 @@ app.get('/users', authorizer, async (req: Request, res: Response) => {
 app.get('/users/:id', async (req: Request, res: Response) => {
   const id = req.params.id;
   if (!id) {
+    logger.warn('Request made with missing param', req);
     res.status(400).json({ ok: false, message: 'Bad Request' });
     return;
   }
 
   try {
     const user = await usersDB.get(id);
+    logger.info('User successfully fetched', req);
     res.status(200).json({ ok: true, user });
   } catch (err) {
     if (typeof err === 'object' && err !== null && 'statusCode' in err) {
       if (err.statusCode === 404) {
-        res.status(err.statusCode).json({ ok: false, message: 'Not Found' });
+        logger.error('User does not exist', req, {
+          cause: err,
+        });
+        res.status(403).json({ ok: false, message: 'FORBIDDEN' });
         return;
       }
     }
 
-    console.error(err);
+    logger.error('Failed to fetch user by ID', req, {
+      cause: err,
+    });
     res.status(500).json({ ok: false, message: 'Unhandled Exception' });
   }
 });
@@ -86,27 +80,34 @@ app.get('/users/:id', async (req: Request, res: Response) => {
 app.delete('/users/:id', async (req: Request, res: Response) => {
   const id = req.params.id;
   if (!id) {
+    logger.warn('Missing ID param', req);
     res.status(400).json({ ok: false, message: 'Bad Request' });
     return;
   }
 
   try {
     const user = await usersDB.get(id);
-    if (!user) {
-      res.status(404).json({ ok: false, message: 'Not Found' });
-      return;
-    }
     await usersDB.destroy(user._id, user._rev);
+    logger.info('User successfully deleted', req, {
+      userID: id,
+      resourceType: 'user',
+    });
     res.status(200).json({ ok: true });
   } catch (err) {
     if (typeof err === 'object' && err !== null && 'statusCode' in err) {
       if (err.statusCode === 404) {
-        res.status(err.statusCode).json({ ok: false, message: 'Not Found' });
+        logger.warn('Attempted delet on non-existent user', req, {
+          cause: err,
+        });
+        res.status(403).json({ ok: false, message: 'FORBIDDEN' });
         return;
       }
     }
 
-    console.error(err);
+    logger.error('Failed to delete user', req, {
+      userID: id,
+      cause: err,
+    });
     res.status(500).json({ ok: false, message: 'Unhandled Exception' });
   }
 });
@@ -115,8 +116,8 @@ app.post('/register', async (req: Request, res: Response) => {
   const parsedBody = RegisterParams.safeParse(req.body);
 
   if (!parsedBody.success) {
-    console.warn('Invalid Request Body', {
-      error: z.treeifyError(parsedBody.error),
+    logger.warn('Register Validation failed', req, {
+      cause: z.treeifyError(parsedBody.error),
     });
     res.status(400).json({
       ok: false,
@@ -138,6 +139,7 @@ app.post('/register', async (req: Request, res: Response) => {
   const user = response.docs[0];
 
   if (user) {
+    logger.warn('User already exists', req);
     res.status(400).json({ ok: false, message: 'User already exists' });
     return;
   }
@@ -149,9 +151,19 @@ app.post('/register', async (req: Request, res: Response) => {
       password: hashed,
       role: 'user',
     });
+
+    logger.info('User sucessfully created', req, {
+      userID: response.id,
+      resourceType: 'user',
+      resourceId: response.id,
+    });
+
     res.status(201).json({ ok: true, id: response.id });
   } catch (err) {
-    console.error(err);
+    logger.error('Unhandled Exception: REGISTER failed to register user', req, {
+      cause: err,
+    });
+
     res.status(500).json({ ok: false, message: 'Unhandled Exception' });
   }
 });
@@ -159,8 +171,8 @@ app.post('/register', async (req: Request, res: Response) => {
 app.post('/login', async (req: Request, res: Response) => {
   const parsedBody = LoginParams.safeParse(req.body);
   if (!parsedBody.success) {
-    console.warn('Invalid Request Body', {
-      error: z.treeifyError(parsedBody.error),
+    logger.warn('Invalid Request Body', req, {
+      cause: z.treeifyError(parsedBody.error),
     });
     res.status(400).json({ ok: false, message: 'Invalid request body' });
     return;
@@ -180,15 +192,16 @@ app.post('/login', async (req: Request, res: Response) => {
 
   const document = response.docs[0];
   if (document === undefined) {
+    logger.warn('Attempted login of non-existent user', req);
     res.status(401).json({ ok: false, message: 'Unauthorized' });
     return;
   }
 
   const parseResult = User.safeParse(document);
   if (!parseResult.success) {
-    console.error('Fetched document is invalid', {
+    logger.error('Fetched document is invalid', req, {
       email,
-      error: z.treeifyError(parseResult.error),
+      cause: z.treeifyError(parseResult.error),
     });
     res.status(500).json({ ok: false, message: 'FORBIDDEN' });
     return;
@@ -197,17 +210,19 @@ app.post('/login', async (req: Request, res: Response) => {
   const user = parseResult.data;
   const isValid = await bcrypt.compare(password, user.password);
   if (!isValid) {
-    console.warn('Attempted login with invalid credentials', {
+    logger.warn('Attempted login with invalid credentials', req, {
       email,
     });
     res.status(401).json({ ok: false, message: 'Unauthorized' });
     return;
   }
 
-  console.log('User login successful:', {
-    id: user._id,
-    role: user.role,
+  logger.info('User login successful:', req, {
+    resourceType: 'user',
+    userID: user._id,
+    userRole: user.role,
   });
+
   res.status(200).json({
     ok: true,
     data: {
