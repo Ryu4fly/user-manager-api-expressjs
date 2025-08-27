@@ -1,12 +1,14 @@
 import bcrypt from 'bcrypt';
-import express, { type Request, type Response } from 'express';
+import express, { type Response } from 'express';
 import z from 'zod';
 import { authorizer } from './middlewares/authorizer.js';
-import { LoginParams, RegisterParams, User } from './types.js';
+import { LoginParams, LogQueryParams, RegisterParams, User } from './types.js';
 import { isAdmin } from './utils/is-admin.js';
 import { signAccessToken, signRefreshToken } from './utils/jwt/jwt.js';
-import { connectDB, usersDB } from './services/couchDB.js';
+import { connectDB, logsDB, usersDB } from './services/couchDB.js';
 import { logger } from './utils/logger.js';
+import { type Request } from './types.js';
+import { buildLogQuery } from './utils/build-log-query.js';
 
 const app = express();
 const port = 3000;
@@ -18,9 +20,10 @@ app.get('/ping', (req: Request, res: Response) => {
   res.send('Health Check');
 });
 
+// USERS
 app.get('/users', authorizer, async (req: Request, res: Response) => {
   if (!isAdmin(req)) {
-    logger.warn('Unauthorized attempt made', req);
+    logger.warn('Unauthorized attempt made', 'USERS', req);
     res.status(403).json({ ok: false, message: 'FORBIDDEN' });
     return;
   }
@@ -35,10 +38,10 @@ app.get('/users', authorizer, async (req: Request, res: Response) => {
       role: row.doc?.role,
     }));
 
-    logger.info('Users successfully fetched', req);
+    logger.info('Users successfully fetched', 'USERS', req);
     res.status(200).json({ ok: true, users });
   } catch (err) {
-    logger.error('Unable to fetch users from database', req, {
+    logger.error('Unable to fetch users from database', 'USERS', req, {
       cause: err,
     });
     res.status(500).json({ ok: false, message: 'Unhandled Exception' });
@@ -49,19 +52,19 @@ app.get('/users', authorizer, async (req: Request, res: Response) => {
 app.get('/users/:id', async (req: Request, res: Response) => {
   const id = req.params.id;
   if (!id) {
-    logger.warn('Request made with missing param', req);
+    logger.warn('Request made with missing param', 'USERS', req);
     res.status(400).json({ ok: false, message: 'Bad Request' });
     return;
   }
 
   try {
     const user = await usersDB.get(id);
-    logger.info('User successfully fetched', req);
+    logger.info('User successfully fetched', 'USERS', req);
     res.status(200).json({ ok: true, user });
   } catch (err) {
     if (typeof err === 'object' && err !== null && 'statusCode' in err) {
       if (err.statusCode === 404) {
-        logger.error('User does not exist', req, {
+        logger.error('User does not exist', 'USERS', req, {
           cause: err,
         });
         res.status(403).json({ ok: false, message: 'FORBIDDEN' });
@@ -69,7 +72,7 @@ app.get('/users/:id', async (req: Request, res: Response) => {
       }
     }
 
-    logger.error('Failed to fetch user by ID', req, {
+    logger.error('Failed to fetch user by ID', 'USERS', req, {
       cause: err,
     });
     res.status(500).json({ ok: false, message: 'Unhandled Exception' });
@@ -80,7 +83,7 @@ app.get('/users/:id', async (req: Request, res: Response) => {
 app.delete('/users/:id', async (req: Request, res: Response) => {
   const id = req.params.id;
   if (!id) {
-    logger.warn('Missing ID param', req);
+    logger.warn('Missing ID param', 'USERS', req);
     res.status(400).json({ ok: false, message: 'Bad Request' });
     return;
   }
@@ -88,15 +91,15 @@ app.delete('/users/:id', async (req: Request, res: Response) => {
   try {
     const user = await usersDB.get(id);
     await usersDB.destroy(user._id, user._rev);
-    logger.info('User successfully deleted', req, {
+    logger.info('User successfully deleted', 'USERS', req, {
       userID: id,
-      resourceType: 'user',
+      resourceType: 'userS',
     });
     res.status(200).json({ ok: true });
   } catch (err) {
     if (typeof err === 'object' && err !== null && 'statusCode' in err) {
       if (err.statusCode === 404) {
-        logger.warn('Attempted delet on non-existent user', req, {
+        logger.warn('Attempted delet on non-existent user', 'USERS', req, {
           cause: err,
         });
         res.status(403).json({ ok: false, message: 'FORBIDDEN' });
@@ -104,7 +107,7 @@ app.delete('/users/:id', async (req: Request, res: Response) => {
       }
     }
 
-    logger.error('Failed to delete user', req, {
+    logger.error('Failed to delete user', 'USERS', req, {
       userID: id,
       cause: err,
     });
@@ -112,11 +115,12 @@ app.delete('/users/:id', async (req: Request, res: Response) => {
   }
 });
 
+// AUTH
 app.post('/register', async (req: Request, res: Response) => {
   const parsedBody = RegisterParams.safeParse(req.body);
 
   if (!parsedBody.success) {
-    logger.warn('Register Validation failed', req, {
+    logger.warn('Register Validation failed', 'REGISTER', req, {
       cause: z.treeifyError(parsedBody.error),
     });
     res.status(400).json({
@@ -139,7 +143,7 @@ app.post('/register', async (req: Request, res: Response) => {
   const user = response.docs[0];
 
   if (user) {
-    logger.warn('User already exists', req);
+    logger.warn('User already exists', 'REGISTER', req);
     res.status(400).json({ ok: false, message: 'User already exists' });
     return;
   }
@@ -149,20 +153,25 @@ app.post('/register', async (req: Request, res: Response) => {
     const response = await usersDB.insert({
       email,
       password: hashed,
-      role: 'user',
+      role: 'userS',
     });
 
-    logger.info('User sucessfully created', req, {
+    logger.info('User sucessfully created', 'REGISTER', req, {
       userID: response.id,
-      resourceType: 'user',
+      resourceType: 'userS',
       resourceId: response.id,
     });
 
     res.status(201).json({ ok: true, id: response.id });
   } catch (err) {
-    logger.error('Unhandled Exception: REGISTER failed to register user', req, {
-      cause: err,
-    });
+    logger.error(
+      'Unhandled Exception: REGISTER failed to register user',
+      'REGISTER',
+      req,
+      {
+        cause: err,
+      }
+    );
 
     res.status(500).json({ ok: false, message: 'Unhandled Exception' });
   }
@@ -171,7 +180,7 @@ app.post('/register', async (req: Request, res: Response) => {
 app.post('/login', async (req: Request, res: Response) => {
   const parsedBody = LoginParams.safeParse(req.body);
   if (!parsedBody.success) {
-    logger.warn('Invalid Request Body', req, {
+    logger.warn('Invalid Request Body', 'LOGIN', req, {
       cause: z.treeifyError(parsedBody.error),
     });
     res.status(400).json({ ok: false, message: 'Invalid request body' });
@@ -192,14 +201,14 @@ app.post('/login', async (req: Request, res: Response) => {
 
   const document = response.docs[0];
   if (document === undefined) {
-    logger.warn('Attempted login of non-existent user', req);
+    logger.warn('Attempted login of non-existent user', 'LOGIN', req);
     res.status(401).json({ ok: false, message: 'Unauthorized' });
     return;
   }
 
   const parseResult = User.safeParse(document);
   if (!parseResult.success) {
-    logger.error('Fetched document is invalid', req, {
+    logger.error('Fetched document is invalid', 'LOGIN', req, {
       email,
       cause: z.treeifyError(parseResult.error),
     });
@@ -210,15 +219,15 @@ app.post('/login', async (req: Request, res: Response) => {
   const user = parseResult.data;
   const isValid = await bcrypt.compare(password, user.password);
   if (!isValid) {
-    logger.warn('Attempted login with invalid credentials', req, {
+    logger.warn('Attempted login with invalid credentials', 'LOGIN', req, {
       email,
     });
     res.status(401).json({ ok: false, message: 'Unauthorized' });
     return;
   }
 
-  logger.info('User login successful:', req, {
-    resourceType: 'user',
+  logger.info('User login successful:', 'LOGIN', req, {
+    resourceType: 'userS',
     userID: user._id,
     userRole: user.role,
   });
@@ -230,6 +239,50 @@ app.post('/login', async (req: Request, res: Response) => {
       refreshToken: signRefreshToken(user),
     },
   });
+});
+
+// Logs
+app.get('/logs', authorizer, async (req: Request, res: Response) => {
+  if (!isAdmin(req)) {
+    logger.warn('Unauthorized attempt made', 'LOGS', req);
+    res.status(403).json({ ok: false, message: 'FORBIDDEN' });
+    return;
+  }
+
+  const parsedResult = LogQueryParams.safeParse(req.query);
+  if (!parsedResult.success) {
+    logger.warn('Invalid query params for /logs', 'LOGS', req, {
+      cause: z.treeifyError(parsedResult.error),
+    });
+    res.status(400).json({ ok: false, message: 'Invalid query parameters' });
+    return;
+  }
+  const query = parsedResult.data;
+  const isEmpty = Object.values(query).every((v) => v === undefined);
+
+  try {
+    const logs = [];
+    if (isEmpty) {
+      const doclist = await logsDB.list({ include_docs: true });
+      for (let doc of doclist.rows) {
+        if (!doc.id.startsWith('_design')) {
+          logs.push({
+            ...doc,
+          });
+        }
+      }
+    } else {
+      const docList = await logsDB.find(buildLogQuery(query));
+      logs.push(...docList.docs);
+    }
+    res.status(200).json({
+      ok: true,
+      logs,
+    });
+  } catch (err) {
+    logger.error('Failed to fetch logs', 'LOGS', req, { cause: err });
+    res.status(500).json({ ok: false, message: 'Unhandled Exception' });
+  }
 });
 
 app.listen(port, async () => {

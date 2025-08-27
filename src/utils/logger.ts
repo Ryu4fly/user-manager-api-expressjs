@@ -1,5 +1,5 @@
 import { logsDB } from '../services/couchDB.js';
-import type { AuthRequest } from '../types.js';
+import type { Request } from '../types.js';
 import type { ParsedQs } from 'qs';
 /**
  * The express package re-exports many core types from express-serve-static-core, but not all of them, and ParamsDictionary is one of the missing ones.
@@ -7,19 +7,19 @@ import type { ParsedQs } from 'qs';
  */
 import type { ParamsDictionary } from 'express-serve-static-core';
 
-const LOG_LEVELS = {
+export const LOG_LEVELS = {
   INFO: 'INFO',
   WARN: 'WARN',
   ERROR: 'ERROR',
 } as const;
-const LogLevelList = [...Object.values(LOG_LEVELS)];
-type LogLevel = (typeof LogLevelList)[number];
+export const LogLevelList = [...Object.values(LOG_LEVELS)];
+export type LogLevel = (typeof LogLevelList)[number];
 
 type LogEntry = {
-  timestamp: string;
   level: LogLevel;
+  resourceType: string;
   message: string;
-
+  timestamp: number;
   path?: string;
   params?: ParamsDictionary;
   query?: ParsedQs;
@@ -31,14 +31,16 @@ type LogEntry = {
 class Logger {
   private async log(
     message: string,
-    req: AuthRequest,
+    resourceType: string,
+    req: Request,
     level: LogLevel,
     extra: Record<string, any>
   ) {
     const log: LogEntry = {
-      timestamp: new Date().toISOString(),
       level,
+      resourceType,
       message,
+      timestamp: Date.now(),
       ...extra,
     };
 
@@ -69,16 +71,31 @@ class Logger {
     }
   }
 
-  info(message: string, req: AuthRequest, extra: Record<string, any> = {}) {
-    return this.log(message, req, LOG_LEVELS.INFO, extra);
+  info(
+    message: string,
+    resourceType: string,
+    req: Request,
+    extra: Record<string, any> = {}
+  ) {
+    return this.log(message, resourceType, req, LOG_LEVELS.INFO, extra);
   }
 
-  warn(message: string, req: AuthRequest, extra: Record<string, any> = {}) {
-    return this.log(message, req, LOG_LEVELS.WARN, extra);
+  warn(
+    message: string,
+    resourceType: string,
+    req: Request,
+    extra: Record<string, any> = {}
+  ) {
+    return this.log(message, resourceType, req, LOG_LEVELS.WARN, extra);
   }
 
-  error(message: string, req: AuthRequest, extra: Record<string, any> = {}) {
-    return this.log(message, req, LOG_LEVELS.ERROR, extra);
+  error(
+    message: string,
+    resourceType: string,
+    req: Request,
+    extra: Record<string, any> = {}
+  ) {
+    return this.log(message, resourceType, req, LOG_LEVELS.ERROR, extra);
   }
 }
 

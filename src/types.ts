@@ -1,5 +1,6 @@
-import { type Request } from 'express';
+import { type Request as ExpressRequest } from 'express';
 import z from 'zod';
+import { LogLevelList } from './utils/logger.js';
 
 export const User = z.object({
   _id: z.string(),
@@ -35,6 +36,16 @@ export type UserPayloadJWT = {
   role: 'admin' | 'user';
 };
 
-export interface AuthRequest extends Request {
+export interface Request extends ExpressRequest {
   user?: UserPayloadJWT;
 }
+
+export const LogQueryParams = z
+  .object({
+    level: z.union(LogLevelList.map((level) => z.literal(level))),
+    resourceType: z.string(),
+    from: z.positive(),
+    to: z.positive(),
+  })
+  .partial();
+export type LogQueryParams = z.infer<typeof LogQueryParams>;
