@@ -1,9 +1,10 @@
 import jwt from 'jsonwebtoken';
 import type { User } from '../../types.js';
 
-// TODO: STORE IN SEPARATE ENV AND ROTATE
-const JWT_SIGNATURE = 'signature';
-
+const JWT_SIGNATURE = process.env.JWT_SIGNATURE;
+if (!JWT_SIGNATURE) {
+  throw new Error('JWT_SIGNATURE not defined in env file');
+}
 export const signAccessToken = ({ _id, email, role }: User) => {
   return jwt.sign({ id: _id, email, role }, JWT_SIGNATURE, {
     expiresIn: '15m',
