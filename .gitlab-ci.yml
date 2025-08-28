@@ -5,6 +5,11 @@ stages:
   - test
   - docker
 
+cache:
+  key: ${CI_COMMIT_REF_SLUG}
+  paths:
+    - node_modules/
+
 install:
   stage: install
   script:
