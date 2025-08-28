@@ -1,4 +1,6 @@
 dist
 node_modules
 .env
-.gitignore
+.DS_Store
+coverage
+junit.xml

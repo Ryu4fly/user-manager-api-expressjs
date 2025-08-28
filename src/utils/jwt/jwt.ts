@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import type { User } from '../../types.js';
+import type { User } from '../../types';
 
 const JWT_SIGNATURE = process.env.JWT_SIGNATURE;
 if (!JWT_SIGNATURE) {

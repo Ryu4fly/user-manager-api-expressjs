@@ -2,12 +2,8 @@ image: node:24
 stages:
   - install
   - build
+  - test
   - docker
-
-cache:
-  key: ${CI_COMMIT_REF_SLUG}
-  paths:
-    - node_modules/
 
 install:
   stage: install
@@ -19,8 +15,19 @@ build:
   script:
     - npm run build
 
+test:
+  stage: test
+  script:
+    - npm test
+  artifacts:
+    when: always
+    reports:
+      junit: junit.xml
+    paths:
+      - coverage/
+
 docker:
-  stage: install
+  stage: docker
   image: docker:latest
   services:
     - docker:dind

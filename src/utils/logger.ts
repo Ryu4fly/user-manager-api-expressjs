@@ -1,5 +1,5 @@
-import { logsDB } from '../services/couchDB.js';
-import type { Request } from '../types.js';
+import { logsDB } from '../services/couchDB';
+import type { Request } from '../types';
 import type { ParsedQs } from 'qs';
 /**
  * The express package re-exports many core types from express-serve-static-core, but not all of them, and ParamsDictionary is one of the missing ones.

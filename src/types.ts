@@ -1,6 +1,6 @@
 import { type Request as ExpressRequest } from 'express';
 import z from 'zod';
-import { LogLevelList } from './utils/logger.js';
+import { LogLevelList } from './utils/logger';
 
 export const User = z.object({
   _id: z.string(),

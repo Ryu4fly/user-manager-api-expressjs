@@ -1,4 +1,4 @@
-import type { LogQueryParams } from '../types.js';
+import type { LogQueryParams } from '../types';
 import type { MangoQuery } from 'nano';
 
 export const buildLogQuery = (filters: LogQueryParams): MangoQuery => {
