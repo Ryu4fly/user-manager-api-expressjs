@@ -3,7 +3,6 @@ import bcrypt from 'bcrypt';
 
 export const createRandomUser = async () => {
   return {
-    userId: faker.string.uuid(),
     email: faker.internet.email(),
     password: await bcrypt.hash(faker.internet.password(), 10),
     role: 'user',
