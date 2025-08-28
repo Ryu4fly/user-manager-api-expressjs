@@ -6,10 +6,17 @@ services:
     environment:
       COUCHDB_USER: user
       COUCHDB_PASSWORD: pass
+    volumes:
+      - db-data:/opt/couchdb/data
   api:
     build: .
     depends_on:
       - db
+    env_file:
+      - .env
     image: user-manager-api
     ports:
       - '3000:3000'
+
+volumes:
+  db-data:

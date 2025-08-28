@@ -1,0 +1,9 @@
+stages:
+  - build
+
+build_app:
+  image: node:24
+  stage: build
+  script:
+    - npm install
+    - npm run build
