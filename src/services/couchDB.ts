@@ -1,5 +1,4 @@
 import { faker } from '@faker-js/faker';
-import bcrypt from 'bcrypt';
 import nano from 'nano';
 import { createRandomLogs, createRandomUser } from './seed';
 
@@ -17,9 +16,7 @@ export let usersDB: nano.DocumentScope<any>;
 export let logsDB: nano.DocumentScope<any>;
 
 export const connectDB = async (maxRetries = 5, delay = 3000) => {
-  const users = await faker.helpers.multiple(createRandomUser, {
-    count: 5,
-  });
+  const users = await createRandomUser();
 
   for (let i = 0; i < maxRetries; i++) {
     try {
@@ -31,14 +28,7 @@ export const connectDB = async (maxRetries = 5, delay = 3000) => {
       await usersDB.auth(user, password);
       console.info('Seeding users database...');
       await usersDB.bulk({
-        docs: [
-          {
-            email: 'admin@test.com',
-            password: await bcrypt.hash('admin', 10),
-            role: 'admin',
-          },
-          ...users,
-        ],
+        docs: users,
       });
       console.info('Seeding users complete!');
 
