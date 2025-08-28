@@ -8,12 +8,13 @@ stages:
 install:
   stage: install
   script:
-    - npm install --omit=dev=false
+    - npm ci
+    - npx tsc --version
 
 build:
   stage: build
   script:
-    - npm run build
+    - npx tsc
 
 test:
   stage: test
