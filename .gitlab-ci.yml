@@ -1,9 +1,28 @@
+image: node:24
 stages:
+  - install
   - build
+  - docker
 
-build_app:
-  image: node:24
-  stage: build
+cache:
+  - node_modules/
+
+install:
+  stage: install
   script:
     - npm install
+
+build:
+  stage: build
+  script:
     - npm run build
+
+docker:
+  stage: install
+  image: docker:latest
+  services:
+    - docker:dind
+  before_script:
+    - docker info
+  script:
+    - docker build -t user-manager-api .
