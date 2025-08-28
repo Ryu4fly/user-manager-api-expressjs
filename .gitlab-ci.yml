@@ -8,7 +8,7 @@ stages:
 install:
   stage: install
   script:
-    - npm ci
+    - npm install --omit=dev=false
 
 build:
   stage: build
