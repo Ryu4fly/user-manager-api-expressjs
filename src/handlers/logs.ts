@@ -13,6 +13,8 @@ export const logsHandler = async (req: Request, res: Response) => {
     return;
   }
 
+  console.log(req.query);
+
   const parsedResult = LogQueryParams.safeParse(req.query);
   if (!parsedResult.success) {
     logger.warn('Invalid query params for /logs', 'LOGS', req, {

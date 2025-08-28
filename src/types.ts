@@ -44,8 +44,12 @@ export const LogQueryParams = z
   .object({
     level: z.union(LogLevelList.map((level) => z.literal(level))),
     resourceType: z.string(),
-    from: z.positive(),
-    to: z.positive(),
+    from: z.preprocess((val) => {
+      return Number(val);
+    }, z.int().positive()),
+    to: z.preprocess((val) => {
+      return Number(val);
+    }, z.int().positive()),
   })
   .partial();
 export type LogQueryParams = z.infer<typeof LogQueryParams>;
