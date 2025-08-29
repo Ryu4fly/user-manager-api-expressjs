@@ -52,7 +52,7 @@ export const registerHandler = async (req: Request, res: Response) => {
       resourceId: response.id,
     });
 
-    res.status(201).json({ ok: true, id: response.id });
+    res.status(201).json({ ok: true, data: { id: response.id } });
   } catch (err) {
     logger.error(
       'Unhandled Exception: REGISTER failed to register user',

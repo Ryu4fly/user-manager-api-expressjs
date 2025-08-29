@@ -41,7 +41,9 @@ export const logsHandler = async (req: Request, res: Response) => {
     }
     res.status(200).json({
       ok: true,
-      logs,
+      data: {
+        logs,
+      },
     });
   } catch (err) {
     logger.error('Failed to fetch logs', 'LOGS', req, { cause: err });

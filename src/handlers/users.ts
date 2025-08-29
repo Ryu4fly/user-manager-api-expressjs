@@ -22,7 +22,7 @@ export const getUsersHandler = async (req: Request, res: Response) => {
     }));
 
     logger.info('Users successfully fetched', 'USERS', req);
-    res.status(200).json({ ok: true, users });
+    res.status(200).json({ ok: true, data: { users } });
   } catch (err) {
     logger.error('Unable to fetch users from database', 'USERS', req, {
       cause: err,
@@ -43,7 +43,9 @@ export const getUserHandler = async (req: Request, res: Response) => {
   try {
     const user = await usersDB.get(id);
     logger.info('User successfully fetched', 'USERS', req);
-    res.status(200).json({ ok: true, user });
+    res
+      .status(200)
+      .json({ ok: true, data: { user: { id: user._id, email: user.email } } });
   } catch (err) {
     if (typeof err === 'object' && err !== null && 'statusCode' in err) {
       if (err.statusCode === 404) {
