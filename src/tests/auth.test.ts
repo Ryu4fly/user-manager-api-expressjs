@@ -36,7 +36,7 @@ describe('auth routes', () => {
       const data = JSON.parse(response.text);
       expect(response.status).toBe(201);
       expect(data.ok).toBe(true);
-      expect(data.id).toBe('mock-user-id');
+      expect(data.data.id).toBe('mock-user-id');
     });
   });
 
